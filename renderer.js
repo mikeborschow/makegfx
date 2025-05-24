@@ -9,7 +9,8 @@ const generateBtn = document.getElementById('generateBtn');
 const cancelBtn = document.getElementById('cancelBtn');
 const csvStatus = document.getElementById('csvStatus');
 const status = document.getElementById('status');
-const debugInfo = document.getElementById('debugInfo');
+const debugBtn = document.getElementById('debugBtn');
+const debugPanel = document.getElementById('debugPanel');
 const debugInfoContent = document.getElementById('debugInfoContent');
 
 // Check if CSV file exists and load lots
@@ -142,54 +143,21 @@ ipcRenderer.on('generation-progress', (event, progress) => {
     status.textContent = `Processing ${progress.lotNumber} (${progress.current}/${progress.total})...`;
 });
 
-// Add debug info function
-window.electronDebugInfo = async function() {
-    try {
-        const info = await ipcRenderer.invoke('get-debug-info');
-        debugInfoContent.textContent = JSON.stringify(info, null, 2);
-    } catch (error) {
-        debugInfoContent.textContent = `Error getting debug info: ${error.message}`;
+// Debug button functionality
+debugBtn.addEventListener('click', async () => {
+    const isVisible = debugPanel.style.display !== 'none';
+    debugPanel.style.display = isVisible ? 'none' : 'block';
+    debugBtn.textContent = isVisible ? 'Show Debug Info' : 'Hide Debug Info';
+    
+    if (!isVisible) {
+        try {
+            const info = await ipcRenderer.invoke('get-debug-info');
+            debugInfoContent.textContent = JSON.stringify(info, null, 2);
+        } catch (error) {
+            debugInfoContent.textContent = `Error getting debug info: ${error.message}`;
+        }
     }
-};
+});
 
 // Initialize
 init();
-// Debug panel functionality (add this after init() is called)
-const debugPanel = document.getElementById('debugPanel');
-const toggleDebugBtn = document.getElementById('toggleDebugBtn');
-const reloadAppBtn = document.getElementById('reloadAppBtn');
-
-// Toggle debug panel visibility
-toggleDebugBtn.addEventListener('click', () => {
-    const isVisible = debugPanel.style.display !== 'none';
-    debugPanel.style.display = isVisible ? 'none' : 'block';
-    toggleDebugBtn.textContent = isVisible ? 'Show Debug Info' : 'Hide Debug Info';
-    
-    if (!isVisible) {
-        updateDebugInfo();
-    }
-});
-
-// Reload application
-reloadAppBtn.addEventListener('click', () => {
-    ipcRenderer.send('reload-app');
-});
-
-// Request and display debug information
-async function updateDebugInfo() {
-    try {
-        const info = await ipcRenderer.invoke('get-debug-info');
-        debugInfoContent.textContent = JSON.stringify(info, null, 2);
-    } catch (error) {
-        debugInfoContent.textContent = 'Error fetching debug info: ' + error.message;
-    }
-}
-
-// Add initialization events to the debug info
-window.addEventListener('error', (event) => {
-    console.error('Renderer error:', event.error);
-    if (debugInfoContent) {
-        const currentText = debugInfoContent.textContent || '';
-        debugInfoContent.textContent = `ERROR: ${event.error.message}\n${currentText}`;
-    }
-});
