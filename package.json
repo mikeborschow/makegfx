@@ -28,8 +28,12 @@
       "!node_modules/.cache/**/*"
     ],
     "win": {
-      "target": "nsis",
-      "icon": "icon.ico"
+  "target": [
+    {
+      "target": "portable",
+      "arch": ["x64"]
     }
-  }
+  ],
+  "icon": "icon.ico"
+}
 }
