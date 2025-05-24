@@ -1,152 +1,110 @@
+// renderer.js - Handles UI interactions for MakeGFX application
 const { ipcRenderer } = require('electron');
 
-let isProcessing = false;
-
 // DOM elements
-const csvStatus = document.getElementById('csvStatus');
+const optionsForm = document.getElementById('optionsForm');
 const lotSelect = document.getElementById('lotSelect');
 const scaleRange = document.getElementById('scaleRange');
 const scaleValue = document.getElementById('scaleValue');
-const optionsForm = document.getElementById('optionsForm');
 const generateBtn = document.getElementById('generateBtn');
 const cancelBtn = document.getElementById('cancelBtn');
-const status = document.getElementById('status');
-
-// Initialize the application
-async function init() {
-    await checkCSVFile();
-    await loadLotNumbers();
-    setupEventListeners();
-}
+const statusDiv = document.getElementById('status');
+const csvStatusDiv = document.getElementById('csvStatus');
 
 // Check if CSV file exists
-async function checkCSVFile() {
-    const csvExists = await ipcRenderer.invoke('check-csv-exists');
-    
-    if (csvExists) {
-        csvStatus.textContent = '✓ data.csv found';
-        csvStatus.className = 'csv-status csv-found';
-    } else {
-        csvStatus.textContent = '✗ data.csv not found - Please place data.csv in the application folder';
-        csvStatus.className = 'csv-status csv-missing';
-        generateBtn.disabled = true;
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        const csvExists = await ipcRenderer.invoke('check-csv-exists');
+        
+        if (csvExists) {
+            csvStatusDiv.textContent = 'CSV file found. Ready to generate graphics.';
+            csvStatusDiv.className = 'csv-status csv-found';
+            
+            // Load lot numbers from CSV
+            const lotNumbers = await ipcRenderer.invoke('get-lot-numbers');
+            if (lotNumbers && lotNumbers.length > 0) {
+                lotNumbers.forEach(lot => {
+                    const option = document.createElement('option');
+                    option.value = lot;
+                    option.textContent = `Lot ${lot}`;
+                    lotSelect.appendChild(option);
+                });
+                
+                console.log(`Loaded ${lotNumbers.length} lot numbers from CSV`);
+            }
+        } else {
+            csvStatusDiv.textContent = 'CSV file not found. Please add a data.csv file to the application folder.';
+            csvStatusDiv.className = 'csv-status csv-missing';
+            generateBtn.disabled = true;
+        }
+    } catch (error) {
+        showStatus('Error initializing: ' + error.message, 'error');
+        console.error('Initialization error:', error);
     }
-}
+});
 
-// Load lot numbers from CSV
-async function loadLotNumbers() {
-    const lots = await ipcRenderer.invoke('get-lot-numbers');
-    
-    // Clear existing options except "Process All Lots"
-    lotSelect.innerHTML = '<option value="">Process All Lots</option>';
-    
-    // Add lot options
-    lots.forEach(lot => {
-        const option = document.createElement('option');
-        option.value = lot;
-        option.textContent = `Lot ${lot}`;
-        lotSelect.appendChild(option);
-    });
-    
-    if (lots.length > 0) {
-        const statusText = document.createElement('div');
-        statusText.style.fontSize = '12px';
-        statusText.style.color = '#666';
-        statusText.style.marginTop = '5px';
-        statusText.textContent = `${lots.length} lots available`;
-        lotSelect.parentNode.appendChild(statusText);
-    }
-}
+// Update scale value display
+scaleRange.addEventListener('input', () => {
+    scaleValue.textContent = scaleRange.value;
+});
 
-// Setup event listeners
-function setupEventListeners() {
-    // Scale range slider
-    scaleRange.addEventListener('input', (e) => {
-        scaleValue.textContent = e.target.value;
-    });
-    
-    // Form submission
-    optionsForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        await startGeneration();
-    });
-    
-    // Cancel button
-    cancelBtn.addEventListener('click', () => {
-        resetUI();
-    });
-
-    // Listen for progress updates
-    ipcRenderer.on('generation-progress', (event, progress) => {
-        showStatus(`Processing lot ${progress.lotNumber} (${progress.current}/${progress.total})`, 'processing');
-    });
-}
-
-// Start generation process
-async function startGeneration() {
-    if (isProcessing) return;
-    
-    isProcessing = true;
-    updateUI(true);
+// Handle form submission
+optionsForm.addEventListener('submit', async (event) => {
+    event.preventDefault(); // Prevent form submission
     
     const options = {
-        lot: lotSelect.value || null,
+        lot: lotSelect.value, // Empty string for all lots, or specific lot
         scale: parseInt(scaleRange.value),
         background: document.querySelector('input[name="background"]:checked').value
     };
     
-    showStatus('Starting generation... Please wait.', 'processing');
+    // Disable the generate button and show the cancel button
+    generateBtn.disabled = true;
+    cancelBtn.style.display = 'block';
+    
+    // Show processing status
+    showStatus('Processing graphics...', 'processing');
     
     try {
+        // Call main process to generate graphics
+        console.log('Starting generation with options:', options);
         const result = await ipcRenderer.invoke('start-generation', options);
         
         if (result.success) {
-            const message = options.lot 
-                ? `Successfully generated graphics for lot ${options.lot}`
-                : `Successfully generated graphics for ${result.result.processed} lots`;
-            showStatus(message, 'success');
+            showStatus(`Generated ${result.result.processed} graphics successfully.`, 'success');
+            console.log('Generation complete:', result);
         } else {
             showStatus(`Error: ${result.error}`, 'error');
+            console.error('Generation failed:', result.error);
         }
     } catch (error) {
-        showStatus(`Unexpected error: ${error.message}`, 'error');
+        showStatus('Error: ' + error.message, 'error');
+        console.error('Generation error:', error);
+    } finally {
+        // Re-enable the generate button and hide the cancel button
+        generateBtn.disabled = false;
+        cancelBtn.style.display = 'none';
     }
-    
-    isProcessing = false;
-    updateUI(false);
-}
+});
 
-// Update UI during processing
-function updateUI(processing) {
-    generateBtn.disabled = processing;
-    generateBtn.textContent = processing ? 'Generating...' : 'Generate Graphics';
-    cancelBtn.style.display = processing ? 'inline-block' : 'none';
-    
-    // Disable form inputs during processing
-    const inputs = optionsForm.querySelectorAll('input, select');
-    inputs.forEach(input => {
-        input.disabled = processing;
-    });
-}
+// Handle progress updates from main process
+ipcRenderer.on('generation-progress', (event, progress) => {
+    const percent = Math.round((progress.current / progress.total) * 100);
+    showStatus(`Processing lot ${progress.lotNumber} (${progress.current} of ${progress.total}, ${percent}%)`, 'processing');
+    console.log('Progress update:', progress);
+});
 
-// Reset UI to initial state
-function resetUI() {
-    isProcessing = false;
-    updateUI(false);
-    hideStatus();
-}
+// Cancel button handler
+cancelBtn.addEventListener('click', () => {
+    ipcRenderer.invoke('cancel-generation');
+    showStatus('Operation cancelled', 'error');
+    generateBtn.disabled = false;
+    cancelBtn.style.display = 'none';
+});
 
-// Show status message
+// Helper function to show status messages
 function showStatus(message, type) {
-    status.textContent = message;
-    status.className = `status ${type}`;
-    status.style.display = 'block';
+    statusDiv.textContent = message;
+    statusDiv.className = 'status ' + type;
+    statusDiv.style.display = 'block';
 }
-
-// Hide status message
-function hideStatus() {
-    status.style.display = 'none';
-}
-
-// Initialize when DOM is loaded
-document.addEventListener('DOMContentLoaded', init);
