@@ -8,7 +8,7 @@ let mainWindow;
 let server;
 const PORT = 3020;
 
-// SIMPLIFIED: Get the directory where the executable is located
+// Get the application directory and print debugging information
 function getAppFolder() {
     // When running in development
     if (!app.isPackaged) {
@@ -16,28 +16,87 @@ function getAppFolder() {
     }
     
     // When packaged as a production app
+    return process.cwd(); // Use current working directory instead of execPath
+}
+    // Try multiple locations and check if data.csv exists
+    const possiblePaths = [
+        path.dirname(process.execPath),
+        process.cwd(),
+        app.getAppPath(),
+        __dirname,
+        path.join(process.resourcesPath, 'app')
+    ];
+    
+    console.log("DEBUGGING - Checking for data.csv in possible locations:");
+    for (const dir of possiblePaths) {
+        const testPath = path.join(dir, 'data.csv');
+        const exists = fs.existsSync(testPath);
+        console.log(`DEBUGGING - Checking ${testPath}: ${exists ? "FOUND" : "NOT FOUND"}`);
+        if (exists) {
+            console.log("DEBUGGING - Found data.csv at:", testPath);
+            console.log("DEBUGGING - Using directory:", dir);
+            return dir;
+        }
+    }
+    
+    // Default to executable directory
+    console.log("DEBUGGING - Using executable directory as default:", path.dirname(process.execPath));
     return path.dirname(process.execPath);
 }
 
 function createWindow() {
+    // Increase height by 100px (from 500 to 600)
     mainWindow = new BrowserWindow({
         width: 600,
-        height: 500,
+        height: 600, // Increased from 500 to 600
         webPreferences: {
             nodeIntegration: true,
             contextIsolation: false
         },
         icon: path.join(__dirname, 'icon.ico'),
-        resizable: false,
+        resizable: true, // Allow resizing to avoid scroll issues
         autoHideMenuBar: true
     });
 
     mainWindow.loadFile('index.html');
     
-    // Log important paths to help with debugging
-    console.log('App directory:', getAppFolder());
-    console.log('CSV path:', path.join(getAppFolder(), 'data.csv'));
-    console.log('CSV exists:', fs.existsSync(path.join(getAppFolder(), 'data.csv')));
+    // Show developer tools in all modes to help with debugging
+    mainWindow.webContents.openDevTools();
+    
+    // Log important paths
+    console.log('App startup debugging:');
+    console.log('App isPackaged:', app.isPackaged);
+    console.log('Current directory:', process.cwd());
+    console.log('App directory:', app.getAppPath());
+    console.log('__dirname:', __dirname);
+    console.log('Executable path:', process.execPath);
+    console.log('Resources path:', process.resourcesPath);
+    
+    // Check if data.csv exists
+    const appFolder = getAppFolder();
+    const csvPath = path.join(appFolder, 'data.csv');
+    console.log('Using app folder:', appFolder);
+    console.log('Looking for CSV at:', csvPath);
+    console.log('CSV exists:', fs.existsSync(csvPath));
+    
+    // Copy data.csv to multiple locations as a fallback (will help for testing)
+    if (fs.existsSync(csvPath)) {
+        try {
+            // Copy to app.getAppPath()
+            const appPathCsv = path.join(app.getAppPath(), 'data.csv');
+            fs.copyFileSync(csvPath, appPathCsv);
+            console.log('Copied CSV to app path:', appPathCsv);
+            
+            // If in packaged mode, copy to resources
+            if (app.isPackaged && process.resourcesPath) {
+                const resourcesPathCsv = path.join(process.resourcesPath, 'data.csv');
+                fs.copyFileSync(csvPath, resourcesPathCsv);
+                console.log('Copied CSV to resources path:', resourcesPathCsv);
+            }
+        } catch (err) {
+            console.error('Error copying CSV file:', err);
+        }
+    }
 }
 
 app.whenReady().then(() => {
@@ -74,9 +133,11 @@ function startServer() {
                 res.set('Content-Type', 'text/csv');
                 res.send(csvContent);
             } else {
+                console.log('CSV not found at:', csvPath);
                 res.status(404).send('data.csv not found');
             }
         } catch (error) {
+            console.error('Server error reading CSV:', error);
             res.status(500).send('Error reading data.csv');
         }
     });
@@ -87,6 +148,9 @@ function startServer() {
     expressApp.get('/gfx.html', (req, res) => {
         const lotNumber = req.query.lot || Object.keys(req.query)[0];
         const userGfxPath = path.join(getAppFolder(), 'gfx.html');
+        
+        console.log('Looking for gfx.html at:', userGfxPath);
+        console.log('gfx.html exists:', fs.existsSync(userGfxPath));
         
         if (fs.existsSync(userGfxPath)) {
             let html = fs.readFileSync(userGfxPath, 'utf8');
@@ -288,8 +352,9 @@ async function processLots(options, progressCallback) {
 ipcMain.handle('check-csv-exists', () => {
     const csvPath = path.join(getAppFolder(), 'data.csv');
     console.log('Checking for CSV at:', csvPath);
-    console.log('CSV exists:', fs.existsSync(csvPath));
-    return fs.existsSync(csvPath);
+    const exists = fs.existsSync(csvPath);
+    console.log('CSV exists:', exists);
+    return exists;
 });
 
 ipcMain.handle('get-lot-numbers', async () => {
@@ -318,4 +383,28 @@ let isCancelled = false;
 ipcMain.handle('cancel-generation', () => {
     isCancelled = true;
     return true;
+});
+
+// Dev tools toggle
+ipcMain.handle('toggle-devtools', () => {
+    if (mainWindow.webContents.isDevToolsOpened()) {
+        mainWindow.webContents.closeDevTools();
+    } else {
+        mainWindow.webContents.openDevTools();
+    }
+});
+
+// Add debug info handler
+ipcMain.handle('get-debug-info', () => {
+    return {
+        appIsPackaged: app.isPackaged,
+        currentDir: process.cwd(),
+        appPath: app.getAppPath(),
+        dirName: __dirname,
+        exePath: process.execPath,
+        resourcesPath: process.resourcesPath,
+        appFolder: getAppFolder(),
+        csvExists: fs.existsSync(path.join(getAppFolder(), 'data.csv')),
+        csvPath: path.join(getAppFolder(), 'data.csv')
+    };
 });
