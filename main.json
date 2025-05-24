@@ -1,0 +1,66 @@
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const path = require('path');
+const fs = require('fs');
+const { generateScreenshots } = require('./makegfx-core');
+
+let mainWindow;
+
+function createWindow() {
+    mainWindow = new BrowserWindow({
+        width: 600,
+        height: 500,
+        webPreferences: {
+            nodeIntegration: true,
+            contextIsolation: false
+        },
+        icon: path.join(__dirname, 'icon.ico'), // Add your icon
+        resizable: false,
+        autoHideMenuBar: true
+    });
+
+    mainWindow.loadFile('index.html');
+}
+
+app.whenReady().then(createWindow);
+
+app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') {
+        app.quit();
+    }
+});
+
+app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
+    }
+});
+
+// IPC handlers
+ipcMain.handle('check-csv-exists', () => {
+    return fs.existsSync(path.join(process.cwd(), 'data.csv'));
+});
+
+ipcMain.handle('get-lot-numbers', async () => {
+    try {
+        const { getLotNumbersFromCSV } = require('./makegfx-core');
+        return await getLotNumbersFromCSV();
+    } catch (error) {
+        return [];
+    }
+});
+
+ipcMain.handle('start-generation', async (event, options) => {
+    try {
+        const result = await generateScreenshots(options);
+        return { success: true, result };
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+});
+
+ipcMain.handle('select-folder', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+        properties: ['openDirectory']
+    });
+    return result;
+});

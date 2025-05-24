@@ -1,0 +1,412 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Bottom Row Display</title>
+    <style>
+html, body {
+    margin: 0;
+    padding: 0;
+    width: 100vw;
+    height: 100vh;
+    background: transparent;
+    overflow: hidden;
+}
+.main-container {
+    width: 1920px;
+    height: 150px;
+    margin: 0 auto;
+    position: relative;
+}
+#bottomRowContainer {
+    width: 1920px;
+    height: 150px;
+    background: transparent;
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    align-items: center; /* This centers content vertically */
+    justify-content: center; /* This centers content horizontally */
+}
+
+#bottomRow {
+    display: flex;
+    gap: 30px;
+    visibility: hidden; /* Start hidden until ready */
+    transform-origin: center center; /* Important for scaling */
+}
+
+/* Text elements styling */
+#bottomRow span, #bottomRow .note, #bottomRow .changed, #bottomRow .nextlot {
+    font-family: 'PT Sans Narrow', sans-serif;
+    font-size: 44px;
+    font-weight: 600;
+    white-space: nowrap;
+    text-align: center;
+    height: 130px;
+    line-height: 130px; /* For vertical centering of single-line text */
+}
+
+/* Image styling */
+#bottomRow img {
+    height: 130px;
+    width: auto;
+    display: block;
+}
+
+.changed { color: #a43737; }
+.note { color: #000; }
+.nextlot { color: #050; margin-left: 60px; }
+.yellow { color: #FFFF44; }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <div id="bottomRowContainer">
+            <div id="bottomRow">
+                <!-- dynamic content goes here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**********************************************
+         * 1. JSON Data Structure
+         **********************************************/
+        let jsonData = {
+            "Lot": "2574",
+            "gfxChanged": "",
+            "BottomRow": [
+                { "type": "images", "files": ["vacPreCon_100.png|tag840_130.png"] },
+                { "type": "text", "class": "note", "text": "" },
+                { "type": "theEnd" }
+            ]
+        };
+
+        // Process BottomRow to remove "" from image files
+        jsonData.BottomRow = jsonData.BottomRow.map(item => {
+            if (item.type === "images") {
+                return { ...item, files: item.files.filter(file => file !== "") };
+            }
+            return item;
+        });
+
+        document.title = 'bottom-row-' + jsonData.Lot;
+
+        // Define filler candidates sorted from largest to smallest
+        const fillerCandidates = [
+            { src: "www_450.png", width: 450 },
+            { src: "www_300.png", width: 300 }
+        ];
+
+        // Define gfxChanged graphic value 1
+        const gfxChanged1 = [
+            { src: "change_186.png", width: 186 },
+        ];
+
+        // Define gfxChanged graphic value 2 or higher
+        const gfxChanged2 = [
+            { src: "changes_186.png", width: 186 },
+        ];
+
+        /**********************************************
+         * 2. Bottom Row Functions
+         **********************************************/
+        const TITLE_SAFE_WIDTH = 1728;
+
+        function populateBottomRow() {
+            const bottomRow = document.getElementById("bottomRow");
+            bottomRow.innerHTML = "";
+            let imagesToLoad = 0;
+            let imagesLoaded = 0;
+
+            const gfxChangedValue = parseInt(jsonData.gfxChanged);
+            if (gfxChangedValue === 1) {
+                gfxChanged1.forEach(gfx => {
+                    const img = document.createElement("img");
+                    img.onload = img.onerror = () => {
+                        imagesLoaded++;
+                        if (imagesLoaded === imagesToLoad) {
+                            processBottomRow();
+                        }
+                    };
+                    img.src = "images/" + gfx.src;
+                    bottomRow.prepend(img);
+                    imagesToLoad++;
+                });
+            } else if (gfxChangedValue >= 2) {
+                gfxChanged2.forEach(gfx => {
+                    const img = document.createElement("img");
+                    img.onload = img.onerror = () => {
+                        imagesLoaded++;
+                        if (imagesLoaded === imagesToLoad) {
+                            processBottomRow();
+                        }
+                    };
+                    img.src = "images/" + gfx.src;
+                    bottomRow.prepend(img);
+                    imagesToLoad++;
+                });
+            }
+
+            jsonData.BottomRow.forEach(item => {
+                if (item.type === "text") {
+                    const span = document.createElement("span");
+                    if (item.class) span.className = item.class;
+                    span.innerHTML = item.text;
+                    bottomRow.appendChild(span);
+                } else if (item.type === "images") {
+                    item.files.forEach(file => {
+                        const img = document.createElement("img");
+                        img.onload = img.onerror = () => {
+                            imagesLoaded++;
+                            if (imagesLoaded === imagesToLoad) {
+                                processBottomRow();
+                            }
+                        };
+                        img.src = "images/" + file;
+                        bottomRow.appendChild(img);
+                        imagesToLoad++;
+                    });
+                }
+            });
+
+            if (imagesToLoad === 0) {
+                processBottomRow();
+            }
+        }
+
+        function processBottomRow() {
+            const bottomRow = document.getElementById("bottomRow");
+            const nextlot = bottomRow.querySelector(".nextlot");
+            const currentWidth = bottomRow.scrollWidth;
+            const gap = TITLE_SAFE_WIDTH - currentWidth;
+            let fillerAdded = false;
+
+            if (gap >= 300) {
+                for (let i = 0; i < fillerCandidates.length; i++) {
+                    if (fillerCandidates[i].width <= gap) {
+                        const fillerImg = document.createElement("img");
+                        fillerImg.onload = fillerImg.onerror = () => {
+                            scaleAndCenterRow();
+                            showBottomRow();
+                        };
+                        fillerImg.src = "images/" + fillerCandidates[i].src;
+                        bottomRow.appendChild(fillerImg);
+                        fillerAdded = true;
+                        break;
+                    }
+                }
+            }
+
+            if (nextlot && nextlot !== bottomRow.lastChild) {
+                bottomRow.appendChild(nextlot);
+            }
+
+            if (!fillerAdded) {
+                scaleAndCenterRow();
+                showBottomRow();
+            }
+        }
+
+        function scaleAndCenterRow() {
+            requestAnimationFrame(() => {
+                const bottomRow = document.getElementById("bottomRow");
+                bottomRow.offsetWidth; // Force reflow
+                const contentWidth = bottomRow.scrollWidth;
+
+                if (contentWidth > TITLE_SAFE_WIDTH) {
+                    const factor = TITLE_SAFE_WIDTH / contentWidth;
+                    bottomRow.style.transform = `scale(${factor})`;
+                } else {
+                    bottomRow.style.transform = 'scale(1)';
+                }
+
+                // Remove manual positioning - let flexbox handle centering
+                bottomRow.style.left = '';
+                bottomRow.style.top = '';
+                bottomRow.style.position = 'static';
+            });
+        }
+
+        function showBottomRow() {
+            document.getElementById("bottomRow").style.visibility = "visible";
+            window.screenshotReady = true;
+        }
+
+        // ... rest of your CSV handling functions remain the same ...
+
+        /**********************************************
+         * 3. CSV Handling Functions
+         **********************************************/
+        let csvData = null;
+        let currentLot = null;
+
+        function parseCSVRow(row) {
+            let inQuotes = false;
+            let fields = [];
+            let currentField = '';
+            
+            for (let i = 0; i < row.length; i++) {
+                if (row[i] === '"') {
+                    inQuotes = !inQuotes;
+                    continue;
+                }
+                if (row[i] === ',' && !inQuotes) {
+                    fields.push(currentField);
+                    currentField = '';
+                    continue;
+                }
+                currentField += row[i];
+            }
+            fields.push(currentField);
+
+            return {
+                "Lot": fields[0],
+                "gfxChanged": fields[12] || "",
+                "BottomRow": [
+                    { 
+                        "type": "images", 
+                        "files": fields[11] ? fields[11].split('|').filter(f => f.trim() !== '') : [] 
+                    },
+                    {
+                        "type": "text",
+                        "class": "note",
+                        "text": fields[9] || ""
+                    },
+                    { "type": "theEnd" }
+                ]
+            };
+        }
+
+        let lastModified = null;
+
+        async function fetchCSVData() {
+            try {
+                const headResponse = await fetch('data.csv', { 
+                    method: 'HEAD',
+                    headers: {
+                        'Cache-Control': 'no-cache, no-store, must-revalidate',
+                        'Pragma': 'no-cache',
+                        'Expires': '0'
+                    },
+                    cache: 'no-store'
+                });
+                const fileModified = headResponse.headers.get('last-modified');
+                
+                if (fileModified === lastModified && csvData) {
+                    return csvData;
+                }
+                
+                const response = await fetch('data.csv', {
+                    headers: {
+                        'Cache-Control': 'no-cache, no-store, must-revalidate',
+                        'Pragma': 'no-cache',
+                        'Expires': '0'
+                    },
+                    cache: 'no-store'
+                });
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                
+                lastModified = fileModified;
+                
+                const text = await response.text();
+                const rows = text.split('\n').filter(row => row.trim());
+                csvData = rows.slice(1).map(row => parseCSVRow(row));
+                return csvData;
+            } catch (error) {
+                handleLotError(`Unable to load CSV: ${error.message}`);
+                return null;
+            }
+        }
+
+        function handleLotError(message) {
+            const bottomRow = document.getElementById("bottomRow");
+            bottomRow.innerHTML = `<span class="note">Standby<br>Loading</span>`;
+            console.log(`Operator Alert: ${message}`);
+            showBottomRow();
+        }
+
+        async function loadAndDisplayLot(lotNumber) {
+            csvData = await fetchCSVData();
+            if (!csvData) return false;
+
+            const lotData = csvData.find(row => row.Lot === lotNumber);
+            if (!lotData) {
+                handleLotError(`Lot ${lotNumber} not found`);
+                return false;
+            }
+
+            currentLot = lotNumber;
+            jsonData = lotData;
+            
+            document.title = 'bottom-row-' + jsonData.Lot;
+            populateBottomRow();
+            return true;
+        }
+
+        async function showFirstLot() {
+            if (!csvData) {
+                csvData = await fetchCSVData();
+                if (!csvData || csvData.length === 0) {
+                    handleLotError("No data available");
+                    return;
+                }
+            }
+            loadAndDisplayLot(csvData[0].Lot);
+        }
+
+        async function initializeDisplay() {
+            const params = window.location.search;
+            
+            try {
+                if (!params || params === '') {
+                    await showFirstLot();
+                } else {
+                    const lotNumber = params.split('&')[0].replace('?', '');
+                    await loadAndDisplayLot(lotNumber);
+                }
+            } catch (error) {
+                console.error('Error during initialization:', error);
+                populateBottomRow();
+            }
+        }
+
+        function handleEmbeddedData() {
+            if (typeof embedded !== 'undefined' && embedded) {
+                if (embedded.IconFiles) {
+                    embedded.BottomRow = [
+                        {
+                            type: "images",
+                            files: embedded.IconFiles.split('|').filter(f => f.trim())
+                        },
+                        {
+                            type: "text",
+                            class: "note",
+                            text: embedded.Notes || ""
+                        },
+                        { type: "theEnd" }
+                    ];
+                }
+
+                Object.assign(jsonData, embedded);
+
+                if (Array.isArray(jsonData.BottomRow)) {
+                    jsonData.BottomRow.forEach(it => {
+                        if (it.type === 'images' && Array.isArray(it.files)) {
+                            it.files = it.files.map(f => f.trim()).filter(f => f);
+                        }
+                    });
+                }
+
+                document.title = 'bottom-row-' + jsonData.Lot;
+                populateBottomRow();
+            } else {
+                initializeDisplay();
+            }
+        }
+
+        window.onload = handleEmbeddedData;
+    </script>
+</body>
+</html>
