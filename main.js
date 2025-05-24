@@ -8,6 +8,17 @@ let mainWindow;
 let server;
 const PORT = 3020;
 
+// SIMPLIFIED: Get the directory where the executable is located
+function getAppFolder() {
+    // When running in development
+    if (!app.isPackaged) {
+        return process.cwd();
+    }
+    
+    // When packaged as a production app
+    return path.dirname(process.execPath);
+}
+
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: 600,
@@ -22,6 +33,11 @@ function createWindow() {
     });
 
     mainWindow.loadFile('index.html');
+    
+    // Log important paths to help with debugging
+    console.log('App directory:', getAppFolder());
+    console.log('CSV path:', path.join(getAppFolder(), 'data.csv'));
+    console.log('CSV exists:', fs.existsSync(path.join(getAppFolder(), 'data.csv')));
 }
 
 app.whenReady().then(() => {
@@ -49,7 +65,9 @@ function startServer() {
     // CSV handler
     expressApp.get('/data.csv', (req, res) => {
         try {
-            const csvPath = path.join(process.cwd(), 'data.csv');
+            const csvPath = path.join(getAppFolder(), 'data.csv');
+            console.log('Server reading CSV from:', csvPath);
+            
             if (fs.existsSync(csvPath)) {
                 let csvContent = fs.readFileSync(csvPath, 'utf-8');
                 csvContent = csvContent.replace(/^\uFEFF/, '');
@@ -63,12 +81,12 @@ function startServer() {
         }
     });
 
-    expressApp.use('/', express.static(process.cwd()));
+    expressApp.use('/', express.static(getAppFolder()));
 
     // gfx.html handler
     expressApp.get('/gfx.html', (req, res) => {
         const lotNumber = req.query.lot || Object.keys(req.query)[0];
-        const userGfxPath = path.join(process.cwd(), 'gfx.html');
+        const userGfxPath = path.join(getAppFolder(), 'gfx.html');
         
         if (fs.existsSync(userGfxPath)) {
             let html = fs.readFileSync(userGfxPath, 'utf8');
@@ -99,7 +117,7 @@ function stopServer() {
 
 // Helper functions
 async function ensureDirectories() {
-    const dir = 'pgmGfx';
+    const dir = path.join(getAppFolder(), 'pgmGfx');
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir);
     }
@@ -107,7 +125,13 @@ async function ensureDirectories() {
 
 async function getLotNumbersFromCSV() {
     try {
-        const csvPath = path.join(process.cwd(), 'data.csv');
+        const csvPath = path.join(getAppFolder(), 'data.csv');
+        console.log('Reading lot numbers from:', csvPath);
+        
+        if (!fs.existsSync(csvPath)) {
+            throw new Error(`CSV file not found at ${csvPath}`);
+        }
+        
         const csvContent = fs.readFileSync(csvPath, 'utf-8').replace(/^\uFEFF/, '');
         const records = await new Promise((resolve, reject) => {
             parse(csvContent, { columns: true, skip_empty_lines: true }, (err, output) => {
@@ -210,7 +234,7 @@ async function captureScreenshot(lotNumber, options) {
 
             await captureWindow.close();
 
-            const outputPath = path.join('pgmGfx', `${lotNumber}.png`);
+            const outputPath = path.join(getAppFolder(), 'pgmGfx', `${lotNumber}.png`);
             fs.writeFileSync(outputPath, image.toPNG());
             
             console.log(`Saved ${outputPath} (${scaledWidth}x${scaledHeight})`);
@@ -262,7 +286,10 @@ async function processLots(options, progressCallback) {
 
 // IPC handlers
 ipcMain.handle('check-csv-exists', () => {
-    return fs.existsSync(path.join(process.cwd(), 'data.csv'));
+    const csvPath = path.join(getAppFolder(), 'data.csv');
+    console.log('Checking for CSV at:', csvPath);
+    console.log('CSV exists:', fs.existsSync(csvPath));
+    return fs.existsSync(csvPath);
 });
 
 ipcMain.handle('get-lot-numbers', async () => {
@@ -283,4 +310,12 @@ ipcMain.handle('start-generation', async (event, options) => {
     } catch (error) {
         return { success: false, error: error.message };
     }
+});
+
+// Add a handler for cancel
+let isCancelled = false;
+
+ipcMain.handle('cancel-generation', () => {
+    isCancelled = true;
+    return true;
 });
