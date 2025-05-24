@@ -1,4 +1,5 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+// main.js - simplified file path handling
+const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const express = require('express');
@@ -8,107 +9,69 @@ let mainWindow;
 let server;
 const PORT = 3020;
 
-// Get the application directory and print debugging information
+// FIXED: Use a simpler approach to finding the app folder
 function getAppFolder() {
-    // When running in development
-    if (!app.isPackaged) {
-        return process.cwd();
-    }
-    
-    // When packaged as a production app
-    return process.cwd(); // Use current working directory instead of execPath
-}
-    // Try multiple locations and check if data.csv exists
-    const possiblePaths = [
-        path.dirname(process.execPath),
-        process.cwd(),
-        app.getAppPath(),
-        __dirname,
-        path.join(process.resourcesPath, 'app')
-    ];
-    
-    console.log("DEBUGGING - Checking for data.csv in possible locations:");
-    for (const dir of possiblePaths) {
-        const testPath = path.join(dir, 'data.csv');
-        const exists = fs.existsSync(testPath);
-        console.log(`DEBUGGING - Checking ${testPath}: ${exists ? "FOUND" : "NOT FOUND"}`);
-        if (exists) {
-            console.log("DEBUGGING - Found data.csv at:", testPath);
-            console.log("DEBUGGING - Using directory:", dir);
-            return dir;
-        }
-    }
-    
-    // Default to executable directory
-    console.log("DEBUGGING - Using executable directory as default:", path.dirname(process.execPath));
-    return path.dirname(process.execPath);
+  console.log('App is packaged:', app.isPackaged);
+  console.log('Process cwd:', process.cwd());
+  console.log('__dirname:', __dirname);
+  
+  // Always try current working directory first
+  const cwdPath = path.join(process.cwd(), 'data.csv');
+  if (fs.existsSync(cwdPath)) {
+    console.log('Found data.csv in cwd');
+    return process.cwd();
+  }
+  
+  // Then try app directory
+  const appPath = path.dirname(process.execPath);
+  const appFilePath = path.join(appPath, 'data.csv');
+  if (fs.existsSync(appFilePath)) {
+    console.log('Found data.csv in app directory');
+    return appPath;
+  }
+  
+  // Finally try __dirname
+  const dirnamePath = path.join(__dirname, 'data.csv');
+  if (fs.existsSync(dirnamePath)) {
+    console.log('Found data.csv in __dirname');
+    return __dirname;
+  }
+  
+  // Default to cwd if nothing found
+  console.log('No data.csv found, using cwd as fallback');
+  return process.cwd();
 }
 
 function createWindow() {
-    // Increase height by 100px (from 500 to 600)
-    mainWindow = new BrowserWindow({
-        width: 600,
-        height: 600, // Increased from 500 to 600
-        webPreferences: {
-            nodeIntegration: true,
-            contextIsolation: false
-        },
-        icon: path.join(__dirname, 'icon.ico'),
-        resizable: true, // Allow resizing to avoid scroll issues
-        autoHideMenuBar: true
-    });
+  mainWindow = new BrowserWindow({
+    width: 600,
+    height: 500,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false
+    },
+    autoHideMenuBar: true
+  });
 
-    mainWindow.loadFile('index.html');
-    
-    // Show developer tools in all modes to help with debugging
-    mainWindow.webContents.openDevTools();
-    
-    // Log important paths
-    console.log('App startup debugging:');
-    console.log('App isPackaged:', app.isPackaged);
-    console.log('Current directory:', process.cwd());
-    console.log('App directory:', app.getAppPath());
-    console.log('__dirname:', __dirname);
-    console.log('Executable path:', process.execPath);
-    console.log('Resources path:', process.resourcesPath);
-    
-    // Check if data.csv exists
-    const appFolder = getAppFolder();
-    const csvPath = path.join(appFolder, 'data.csv');
-    console.log('Using app folder:', appFolder);
-    console.log('Looking for CSV at:', csvPath);
-    console.log('CSV exists:', fs.existsSync(csvPath));
-    
-    // Copy data.csv to multiple locations as a fallback (will help for testing)
-    if (fs.existsSync(csvPath)) {
-        try {
-            // Copy to app.getAppPath()
-            const appPathCsv = path.join(app.getAppPath(), 'data.csv');
-            fs.copyFileSync(csvPath, appPathCsv);
-            console.log('Copied CSV to app path:', appPathCsv);
-            
-            // If in packaged mode, copy to resources
-            if (app.isPackaged && process.resourcesPath) {
-                const resourcesPathCsv = path.join(process.resourcesPath, 'data.csv');
-                fs.copyFileSync(csvPath, resourcesPathCsv);
-                console.log('Copied CSV to resources path:', resourcesPathCsv);
-            }
-        } catch (err) {
-            console.error('Error copying CSV file:', err);
-        }
-    }
+  mainWindow.loadFile('index.html');
+  
+  // Debug: log important paths
+  const appFolder = getAppFolder();
+  console.log('Using app directory:', appFolder);
+  console.log('CSV path:', path.join(appFolder, 'data.csv'));
+  console.log('CSV exists:', fs.existsSync(path.join(appFolder, 'data.csv')));
 }
 
 app.whenReady().then(() => {
-    createWindow();
-    startServer();
+  createWindow();
+  startServer();
 });
 
 app.on('window-all-closed', () => {
-    stopServer();
-    if (process.platform !== 'darwin') {
-        app.quit();
-    }
+  stopServer();
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
 });
 
 app.on('activate', () => {
