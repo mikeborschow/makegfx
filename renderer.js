@@ -1,110 +1,156 @@
-// renderer.js - Handles UI interactions for MakeGFX application
 const { ipcRenderer } = require('electron');
 
-// DOM elements
+// Form elements
 const optionsForm = document.getElementById('optionsForm');
 const lotSelect = document.getElementById('lotSelect');
 const scaleRange = document.getElementById('scaleRange');
 const scaleValue = document.getElementById('scaleValue');
 const generateBtn = document.getElementById('generateBtn');
 const cancelBtn = document.getElementById('cancelBtn');
-const statusDiv = document.getElementById('status');
-const csvStatusDiv = document.getElementById('csvStatus');
+const csvStatus = document.getElementById('csvStatus');
+const status = document.getElementById('status');
+const debugInfo = document.getElementById('debugInfo');
+const debugInfoContent = document.getElementById('debugInfoContent');
 
-// Check if CSV file exists
-document.addEventListener('DOMContentLoaded', async () => {
+// Check if CSV file exists and load lots
+async function init() {
     try {
         const csvExists = await ipcRenderer.invoke('check-csv-exists');
         
         if (csvExists) {
-            csvStatusDiv.textContent = 'CSV file found. Ready to generate graphics.';
-            csvStatusDiv.className = 'csv-status csv-found';
+            csvStatus.textContent = 'data.csv found. Ready to generate graphics.';
+            csvStatus.className = 'csv-status csv-found';
             
-            // Load lot numbers from CSV
+            // Get lot numbers from CSV
             const lotNumbers = await ipcRenderer.invoke('get-lot-numbers');
-            if (lotNumbers && lotNumbers.length > 0) {
+            
+            if (lotNumbers.length > 0) {
+                // Clear existing options (except the first "Process All" option)
+                while (lotSelect.options.length > 1) {
+                    lotSelect.remove(1);
+                }
+                
+                // Add lot numbers
                 lotNumbers.forEach(lot => {
                     const option = document.createElement('option');
                     option.value = lot;
-                    option.textContent = `Lot ${lot}`;
+                    option.textContent = lot;
                     lotSelect.appendChild(option);
                 });
                 
-                console.log(`Loaded ${lotNumbers.length} lot numbers from CSV`);
+                generateBtn.disabled = false;
+            } else {
+                csvStatus.textContent = 'No valid lot numbers found in data.csv.';
+                csvStatus.className = 'csv-status csv-missing';
+                generateBtn.disabled = true;
             }
         } else {
-            csvStatusDiv.textContent = 'CSV file not found. Please add a data.csv file to the application folder.';
-            csvStatusDiv.className = 'csv-status csv-missing';
+            csvStatus.textContent = 'CSV file not found. Please add a data.csv file to the application folder.';
+            csvStatus.className = 'csv-status csv-missing';
             generateBtn.disabled = true;
         }
     } catch (error) {
-        showStatus('Error initializing: ' + error.message, 'error');
-        console.error('Initialization error:', error);
+        console.error('Error during initialization:', error);
+        csvStatus.textContent = `Error: ${error.message}`;
+        csvStatus.className = 'csv-status csv-missing';
+        generateBtn.disabled = true;
     }
-});
+}
 
 // Update scale value display
 scaleRange.addEventListener('input', () => {
     scaleValue.textContent = scaleRange.value;
 });
 
-// Handle form submission
+// Form submission
 optionsForm.addEventListener('submit', async (event) => {
-    event.preventDefault(); // Prevent form submission
+    event.preventDefault();
     
+    const selectedLot = lotSelect.value;
+    const selectedScale = parseInt(scaleRange.value);
+    const selectedBackground = document.querySelector('input[name="background"]:checked').value;
+    
+    // Collect options
     const options = {
-        lot: lotSelect.value, // Empty string for all lots, or specific lot
-        scale: parseInt(scaleRange.value),
-        background: document.querySelector('input[name="background"]:checked').value
+        lot: selectedLot,
+        scale: selectedScale,
+        background: selectedBackground
     };
     
-    // Disable the generate button and show the cancel button
+    // Display processing status
+    status.textContent = `Processing ${selectedLot || 'all lots'}... Please wait.`;
+    status.className = 'status processing';
+    status.style.display = 'block';
+    
+    // Disable form and show cancel button
     generateBtn.disabled = true;
+    lotSelect.disabled = true;
+    scaleRange.disabled = true;
+    document.querySelectorAll('input[name="background"]').forEach(input => {
+        input.disabled = true;
+    });
+    
     cancelBtn.style.display = 'block';
     
-    // Show processing status
-    showStatus('Processing graphics...', 'processing');
-    
+    // Start generation process
     try {
-        // Call main process to generate graphics
-        console.log('Starting generation with options:', options);
         const result = await ipcRenderer.invoke('start-generation', options);
         
         if (result.success) {
-            showStatus(`Generated ${result.result.processed} graphics successfully.`, 'success');
-            console.log('Generation complete:', result);
+            status.textContent = `Successfully generated ${result.result.processed} graphics in the pgmGfx folder.`;
+            status.className = 'status success';
         } else {
-            showStatus(`Error: ${result.error}`, 'error');
-            console.error('Generation failed:', result.error);
+            status.textContent = `Error: ${result.error}`;
+            status.className = 'status error';
         }
     } catch (error) {
-        showStatus('Error: ' + error.message, 'error');
-        console.error('Generation error:', error);
+        status.textContent = `Error: ${error.message}`;
+        status.className = 'status error';
     } finally {
-        // Re-enable the generate button and hide the cancel button
+        // Re-enable form and hide cancel button
         generateBtn.disabled = false;
+        lotSelect.disabled = false;
+        scaleRange.disabled = false;
+        document.querySelectorAll('input[name="background"]').forEach(input => {
+            input.disabled = false;
+        });
+        
         cancelBtn.style.display = 'none';
     }
 });
 
-// Handle progress updates from main process
-ipcRenderer.on('generation-progress', (event, progress) => {
-    const percent = Math.round((progress.current / progress.total) * 100);
-    showStatus(`Processing lot ${progress.lotNumber} (${progress.current} of ${progress.total}, ${percent}%)`, 'processing');
-    console.log('Progress update:', progress);
-});
-
-// Cancel button handler
-cancelBtn.addEventListener('click', () => {
-    ipcRenderer.invoke('cancel-generation');
-    showStatus('Operation cancelled', 'error');
+// Cancel button
+cancelBtn.addEventListener('click', async () => {
+    await ipcRenderer.invoke('cancel-generation');
+    
+    status.textContent = 'Generation cancelled.';
+    status.className = 'status error';
+    
+    // Re-enable form and hide cancel button
     generateBtn.disabled = false;
+    lotSelect.disabled = false;
+    scaleRange.disabled = false;
+    document.querySelectorAll('input[name="background"]').forEach(input => {
+        input.disabled = false;
+    });
+    
     cancelBtn.style.display = 'none';
 });
 
-// Helper function to show status messages
-function showStatus(message, type) {
-    statusDiv.textContent = message;
-    statusDiv.className = 'status ' + type;
-    statusDiv.style.display = 'block';
-}
+// Progress updates
+ipcRenderer.on('generation-progress', (event, progress) => {
+    status.textContent = `Processing ${progress.lotNumber} (${progress.current}/${progress.total})...`;
+});
+
+// Add debug info function
+window.electronDebugInfo = async function() {
+    try {
+        const info = await ipcRenderer.invoke('get-debug-info');
+        debugInfoContent.textContent = JSON.stringify(info, null, 2);
+    } catch (error) {
+        debugInfoContent.textContent = `Error getting debug info: ${error.message}`;
+    }
+};
+
+// Initialize
+init();
