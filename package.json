@@ -1,0 +1,40 @@
+{
+  "name": "makegfx",
+  "version": "1.0.0",
+  "description": "Graphics generation tool for lot images",
+  "main": "makegfx.js",
+  "bin": {
+    "makegfx": "makegfx.js"
+  },
+  "pkg": {
+    "targets": [
+      "node18-win-x64"
+    ],
+    "outputPath": "dist",
+    "assets": [
+      "gfx.html",
+      "node_modules/sharp/{build,vendor,lib}/**/*",
+      "node_modules/sharp/build/Release/*.node"
+    ],
+    "scripts": [
+      "makegfx.js"
+    ]
+  },
+  "dependencies": {
+    "csv-parse": "^5.6.0",
+    "express": "^4.21.2",
+    "puppeteer": "^21.11.0",
+    "sharp": "^0.32.6"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1"
+  },
+  "scripts": {
+    "start": "node makegfx.js",
+    "build": "pkg ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
+}
